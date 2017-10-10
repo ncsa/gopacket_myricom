@@ -200,6 +200,7 @@ func (p *Handle) getNextBufPtrLocked(ci *gopacket.CaptureInfo) error {
 			ci.CaptureLength = int(p.recv_req.length)
 			ci.Length = int(p.recv_req.length)
 			ci.InterfaceIndex = p.deviceIndex
+			p.recv_req.length = 0
 
 			return nil
 		}
