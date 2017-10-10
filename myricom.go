@@ -157,7 +157,7 @@ func OpenLive(device string, snaplen int32, promisc bool, timeout time.Duration)
 		return nil, fmt.Errorf("Myricom: failed in snf_start")
 	}
 
-	p.timeoutms = 0 //FIXME: timeoutMillis(p.timeout)
+	p.timeoutms = timeoutMillis(p.timeout)
 
 	return p, nil
 }
@@ -187,10 +187,6 @@ func (p *Handle) getNextBufPtrLocked(ci *gopacket.CaptureInfo) error {
 		result := C.snf_ring_recv(p.snf_ring, p.timeoutms, &p.recv_req)
 		switch result {
 		case 0:
-			if p.timeout >= 0 {
-				return io.EOF
-			}
-		default:
 			// got a packet, set capture info and return
 			sec := int64(p.recv_req.timestamp / nsec)
 			// convert micros to nanos
@@ -200,9 +196,12 @@ func (p *Handle) getNextBufPtrLocked(ci *gopacket.CaptureInfo) error {
 			ci.CaptureLength = int(p.recv_req.length)
 			ci.Length = int(p.recv_req.length)
 			ci.InterfaceIndex = p.deviceIndex
-			p.recv_req.length = 0
 
 			return nil
+		default:
+			if p.timeout >= 0 {
+				return io.EOF
+			}
 		}
 	}
 
