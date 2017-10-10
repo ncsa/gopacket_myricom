@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	myricom "github.com/google/ncsa/gopacket_myricom"
+	myricom "github.com/ncsa/gopacket_myricom"
 )
 
 func main() {
