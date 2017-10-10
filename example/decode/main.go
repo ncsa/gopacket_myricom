@@ -9,13 +9,13 @@ import (
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"github.com/google/gopacket/pcap"
+	myricom "github.com/google/ncsa/gopacket_myricom"
 )
 
 func main() {
 
 	var err error
-	handle, err := pcap.OpenLive(os.Args[1], 9000, true, pcap.BlockForever)
+	handle, err := myricom.OpenLive(os.Args[1], 9000, true, myricom.BlockForever)
 	if err != nil {
 		panic(err)
 	}
