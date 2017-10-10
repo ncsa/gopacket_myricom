@@ -11,6 +11,7 @@ package myricom
 #cgo LDFLAGS: -lsnf -L/opt/snf/lib
 #cgo CFLAGS: -I/opt/snf/include
 #include <stdlib.h>
+#include <stdio.h>
 #include <snf.h>
 
 */
@@ -24,7 +25,6 @@ import (
 	"net"
 	"os"
 	"reflect"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -47,6 +47,7 @@ func mustAtoiWithDefault(s string, defaultValue int) int {
 }
 
 const errorBufferSize = 256
+const nsec = 1000000000
 
 // Handle provides a connection to a snf ring handle, allowing users to read packets
 // off the wire (Next), inject packets onto the wire (Inject), and
@@ -54,10 +55,10 @@ const errorBufferSize = 256
 //
 type Handle struct {
 	// cptr is the handle for the actual pcap C object.
-	snf_handle  *C.snf_handle_t
-	snf_ring    *C.snf_ring_t
+	snf_handle  C.snf_handle_t
+	snf_ring    C.snf_ring_t
 	timeout     time.Duration
-	timeoutms   int
+	timeoutms   C.int
 	device      string
 	deviceIndex int
 	mu          sync.Mutex
@@ -70,7 +71,7 @@ type Handle struct {
 	// they're declared locally then the Go compiler thinks they may have
 	// escaped into C-land, so it allocates them on the heap.  This causes a
 	// huge memory hit, so to handle that we store them here instead.
-	recv_req C.struct_snf_rect_req
+	recv_req C.struct_snf_recv_req
 }
 
 // Stats contains statistics on how many packets were handled by a pcap handle,
@@ -115,20 +116,16 @@ func OpenLive(device string, snaplen int32, promisc bool, timeout time.Duration)
 		return nil, fmt.Errorf("Myricom: failed in snf_init")
 	}
 
-	var ringnum int
+	var ring_num int
 	device_parts := strings.Split(device, ":")
 	device = device_parts[0]
 	if len(device_parts) > 1 {
-		ringnum = mustAtoiWithDefault(device_parts[1], 0)
+		ring_num = mustAtoiWithDefault(device_parts[1], 0)
 	}
 
 	buf := (*C.char)(C.calloc(errorBufferSize, 1))
 	defer C.free(unsafe.Pointer(buf))
 
-	var pro C.int
-	if promisc {
-		pro = 1
-	}
 	p := &Handle{timeout: timeout, device: device}
 
 	ifc, err := net.InterfaceByName(device)
@@ -148,15 +145,15 @@ func OpenLive(device string, snaplen int32, promisc bool, timeout time.Duration)
 	//var rssp C.struct_snf_rss_params
 	//rssp.mode = SNF_RSS_FLAGS
 
-	snf_ring_size := 1024 // MB
-	if C.snf_open(p.deviceIndex, snf_num_rings, nil, snf_ring_size, -1, &p.snf_handle) != 0 {
+	snf_ring_size := C.int64_t(1024) // MB
+	if C.snf_open(C.uint32_t(p.deviceIndex), C.int(snf_num_rings), nil, snf_ring_size, -1, &p.snf_handle) != 0 {
 		return nil, fmt.Errorf("Myricom: failed in snf_open")
 	}
-	if C.snf_ring_open_id(p.snf_handle, ring_num, &p.snf_ring) {
+	if C.snf_ring_open_id(p.snf_handle, C.int(ring_num), &p.snf_ring) != 0 {
 		return nil, fmt.Errorf("Myricom: failed in snf_ring_open_id")
 	}
 
-	if C.snf_start(p.snf_handle) {
+	if C.snf_start(p.snf_handle) != 0 {
 		return nil, fmt.Errorf("Myricom: failed in snf_start")
 	}
 
@@ -172,19 +169,16 @@ func (p *Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err err
 	p.mu.Lock()
 	err = p.getNextBufPtrLocked(&ci)
 	if err == nil {
-		data = C.GoBytes(unsafe.Pointer(p.bufptr), C.int(ci.CaptureLength))
+		data = C.GoBytes(unsafe.Pointer(p.recv_req.pkt_addr), C.int(ci.CaptureLength))
 	}
 	p.mu.Unlock()
-	if err == NextErrorTimeoutExpired {
-		runtime.Gosched()
-	}
 	return
 }
 
 // getNextBufPtrLocked is shared code for ReadPacketData and
 // ZeroCopyReadPacketData.
 func (p *Handle) getNextBufPtrLocked(ci *gopacket.CaptureInfo) error {
-	if p.cptr == nil {
+	if p.snf_ring == nil {
 		return io.EOF
 	}
 
@@ -198,9 +192,9 @@ func (p *Handle) getNextBufPtrLocked(ci *gopacket.CaptureInfo) error {
 			}
 		default:
 			// got a packet, set capture info and return
-			sec := int64(p.pkthdr.ts.tv_sec)
+			sec := int64(p.recv_req.timestamp / nsec)
 			// convert micros to nanos
-			nanos := int64(p.pkthdr.ts.tv_usec) * 1000
+			nanos := int64((p.recv_req.timestamp % nsec) / 1000)
 
 			ci.Timestamp = time.Unix(sec, nanos)
 			ci.CaptureLength = int(p.recv_req.length)
@@ -235,9 +229,6 @@ func (p *Handle) ZeroCopyReadPacketData() (data []byte, ci gopacket.CaptureInfo,
 		slice.Cap = ci.CaptureLength
 	}
 	p.mu.Unlock()
-	if err == NextErrorTimeoutExpired {
-		runtime.Gosched()
-	}
 	return
 }
 
@@ -265,7 +256,9 @@ func (p *Handle) Close() {
 
 // Error returns the current error associated with a snf handle (pcap_geterr).
 func (p *Handle) Error() error {
-	return errors.New(C.GoString(strerror(errno)))
+	//FIXME
+	return errors.New("FIXME")
+	//return errors.New(C.GoString(C.strerror(errno)))
 }
 
 // Stats returns statistics on the underlying snf handle.
