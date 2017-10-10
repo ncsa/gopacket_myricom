@@ -8,8 +8,8 @@
 package myricom
 
 /*
-#cgo linux LDFLAGS: -lsnf
-#cgo freebsd LDFLAGS: -lsnf
+#cgo LDFLAGS: -lsnf -L/opt/snf/lib
+#cgo CFLAGS: -I/opt/snf/include
 #include <stdlib.h>
 #include <snf.h>
 
