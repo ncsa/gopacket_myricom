@@ -13,10 +13,6 @@ package myricom
 #include <stdlib.h>
 #include <snf.h>
 
-// The things we do to avoid pointers escaping to the heap...
-int pcap_next_ex_escaping(pcap_t *p, uintptr_t pkt_hdr, uintptr_t pkt_data) {
-  return pcap_next_ex(p, (struct pcap_pkthdr**)(pkt_hdr), (const u_char**)(pkt_data));
-}
 */
 import "C"
 
@@ -169,37 +165,6 @@ func OpenLive(device string, snaplen int32, promisc bool, timeout time.Duration)
 	return p, nil
 }
 
-// NextError is the return code from a call to Next.
-type NextError int32
-
-// NextError implements the error interface.
-func (n NextError) Error() string {
-	switch n {
-	case NextErrorOk:
-		return "OK"
-	case NextErrorTimeoutExpired:
-		return "Timeout Expired"
-	case NextErrorReadError:
-		return "Read Error"
-	case NextErrorNoMorePackets:
-		return "No More Packets In File"
-	case NextErrorNotActivated:
-		return "Not Activated"
-	}
-	return strconv.Itoa(int(n))
-}
-
-// NextError values.
-const (
-	NextErrorOk             NextError = 1
-	NextErrorTimeoutExpired NextError = 0
-	NextErrorReadError      NextError = -1
-	// NextErrorNoMorePackets is returned when reading from a file (OpenOffline) and
-	// EOF is reached.  When this happens, Next() returns io.EOF instead of this.
-	NextErrorNoMorePackets NextError = -2
-	NextErrorNotActivated  NextError = -3
-)
-
 // ReadPacketData returns the next packet read from the pcap handle, along with an error
 // code associated with that packet.  If the packet is read successfully, the
 // returned error is nil.
@@ -214,36 +179,6 @@ func (p *Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err err
 		runtime.Gosched()
 	}
 	return
-}
-
-type activateError C.int
-
-const (
-	aeNoError      = 0
-	aeActivated    = C.PCAP_ERROR_ACTIVATED
-	aePromisc      = C.PCAP_WARNING_PROMISC_NOTSUP
-	aeNoSuchDevice = C.PCAP_ERROR_NO_SUCH_DEVICE
-	aeDenied       = C.PCAP_ERROR_PERM_DENIED
-	aeNotUp        = C.PCAP_ERROR_IFACE_NOT_UP
-)
-
-func (a activateError) Error() string {
-	switch a {
-	case aeNoError:
-		return "No Error"
-	case aeActivated:
-		return "Already Activated"
-	case aePromisc:
-		return "Cannot set as promisc"
-	case aeNoSuchDevice:
-		return "No Such Device"
-	case aeDenied:
-		return "Permission Denied"
-	case aeNotUp:
-		return "Interface Not Up"
-	default:
-		return fmt.Sprintf("unknown activated error: %d", a)
-	}
 }
 
 // getNextBufPtrLocked is shared code for ReadPacketData and
@@ -355,8 +290,4 @@ func (p *Handle) Stats() (stat *Stats, err error) {
 func (p *Handle) SetBPFFilter(expr string) (err error) {
 	//TODO
 	return nil
-}
-
-func statusError(status C.int) error {
-	return errors.New(C.GoString(C.pcap_statustostr(status)))
 }
