@@ -157,7 +157,7 @@ func OpenLive(device string, snaplen int32, promisc bool, timeout time.Duration)
 		return nil, fmt.Errorf("Myricom: failed in snf_start")
 	}
 
-	p.timeoutms = timeoutMillis(p.timeout)
+	p.timeoutms = 0 //FIXME: timeoutMillis(p.timeout)
 
 	return p, nil
 }
