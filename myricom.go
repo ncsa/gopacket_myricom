@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"os"
 	"reflect"
 	"strconv"
@@ -135,14 +134,7 @@ func OpenLive(device string, snaplen int32, promisc bool, timeout time.Duration)
 		timeoutms: timeoutMillis(timeout),
 	}
 
-	ifc, err := net.InterfaceByName(device)
-	if err != nil {
-		// The device wasn't found in the OS, but could be "any"
-		// Set index to 0
-		p.deviceIndex = 0
-	} else {
-		p.deviceIndex = ifc.Index
-	}
+	p.deviceIndex = mustAtoiWithDefault(device, 0)
 
 	dev := C.CString(device)
 	defer C.free(unsafe.Pointer(dev))
