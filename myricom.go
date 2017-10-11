@@ -13,7 +13,10 @@ package myricom
 #include <stdlib.h>
 #include <stdio.h>
 #include <snf.h>
-
+// The things we do to avoid pointers escaping to the heap...
+int snf_ring_recv_escaping(snf_ring_t ringh, int timeout_ms, uintptr_t recv_request) {
+  return snf_ring_recv(ringh, timeout_ms, (struct snf_recv_req*)(recv_request));
+}
 */
 import "C"
 
@@ -126,7 +129,11 @@ func OpenLive(device string, snaplen int32, promisc bool, timeout time.Duration)
 	buf := (*C.char)(C.calloc(errorBufferSize, 1))
 	defer C.free(unsafe.Pointer(buf))
 
-	p := &Handle{timeout: timeout, device: device}
+	p := &Handle{
+		timeout:   timeout,
+		device:    device,
+		timeoutms: timeoutMillis(timeout),
+	}
 
 	ifc, err := net.InterfaceByName(device)
 	if err != nil {
@@ -157,8 +164,6 @@ func OpenLive(device string, snaplen int32, promisc bool, timeout time.Duration)
 		return nil, fmt.Errorf("Myricom: failed in snf_start")
 	}
 
-	p.timeoutms = timeoutMillis(p.timeout)
-
 	return p, nil
 }
 
@@ -182,9 +187,11 @@ func (p *Handle) getNextBufPtrLocked(ci *gopacket.CaptureInfo) error {
 		return io.EOF
 	}
 
+	recv_req_ptr := C.uintptr_t(uintptr(unsafe.Pointer(&p.recv_req)))
+
 	for atomic.LoadUint64(&p.stop) == 0 {
 		// try to read a packet if one is immediately available
-		result := C.snf_ring_recv(p.snf_ring, p.timeoutms, &p.recv_req)
+		result := C.snf_ring_recv_escaping(p.snf_ring, p.timeoutms, recv_req_ptr)
 		switch result {
 		case 0:
 			// got a packet, set capture info and return
